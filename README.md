@@ -55,3 +55,9 @@ For multi-file projects, you can manage the build architecture and source files 
   "target_architecture": "x64",
   "output_directory": "build/"
 }
+```
+---
+## Speed ​​test comparing uncompiled and compiled Python
+
+sur l'image est le code python qui est compiler. 
+<img width="1114" height="763" alt="image" src="https://github.com/user-attachments/assets/44cc75be-8be9-4fb6-afc2-64d118266e1d" />
