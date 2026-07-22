@@ -2,6 +2,8 @@
 
 **This project is currently under active development.**
 
+A beta version is coming out; I'm updating the GitHub.
+
 # Python Compiler
 
 A native, ahead-of-time (AOT) Python compiler written completely from scratch. 
