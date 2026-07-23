@@ -42,53 +42,17 @@ By merging these concepts, the compiler achieves maximum hardware execution spee
 
 The compiler transforms a `.py` source file into a native `.exe` in **6 stages**. Each stage is a distinct module with a clear responsibility.
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         COMPILATION PIPELINE                                │
-│                                                                             │
-│  source.py                                                                  │
-│      │                                                                      │
-│      ▼                                                                      │
-│  ┌─────────────┐                                                            │
-│  │   LEXER     │  python_lexer.py                                           │
-│  │             │  Splits raw text into a stream of tokens.                  │
-│  │ "x = 1 + 2" │  e.g. [NOM 'x'] [OP '='] [INT '1'] [OP '+'] [INT '2']      │
-│  └──────┬──────┘                                                            │
-│         │  Token stream                                                     │
-│         ▼                                                                   │
-│  ┌─────────────┐                                                            │
-│  │   PARSER    │  python_parser.py                                          │
-│  │             │  Builds an Abstract Syntax Tree (AST) from the tokens.     │
-│  │  Token[] →  │  e.g.  Affectation(cible='x',                              │
-│  │    AST      │          valeur=OpBin('+', EntierLit(1), EntierLit(2)))    │
-│  └──────┬──────┘                                                            │
-│         │  AST (tree of Noeud objects)                                      │
-│         ▼                                                                   │
-│  ┌─────────────┐                                                            │
-│  │  CODEGEN    │  python_codegen_x64.py                                     │
-│  │             │  Walks the AST and emits x64 machine instructions.         │
-│  │  AST →      │  e.g.  mov rax, 0x09   ; LORTE_VAL(1)                      │
-│  │  x64 bytes  │        add rax, 0x11   ; LORTE_VAL(2)                      │
-│  └──────┬──────┘        mov [rbp-8], rax ; store x                          │
-│         │  Raw instruction bytes                                            │
-│         ▼                                                                   │
-│  ┌─────────────┐                                                            │
-│  │   RUNTIME   │  python_runtime_x64.py                                     │
-│  │             │  Provides built-in functions compiled into the binary:     │
-│  │  lorte_*    │    lorte_print, lorte_list_new, lorte_dict_set,            │
-│  │  functions  │    lorte_str_concat, lorte_alloc, print_flush, ...         │
-│  └──────┬──────┘                                                            │
-│         │  .text section bytes (code + runtime merged)                      │
-│         ▼                                                                   │
-│  ┌─────────────┐                                                            │
-│  │ PE BUILDER  │  python_pe_x64.py  +  pe_builder.py                        │
-│  │             │  Wraps everything into a valid Windows PE32+ executable:   │
-│  │  bytes →    │    MZ header, PE header, .text, .data, .idata sections,    │
-│  │  .exe file  │    Import Table (kernel32.dll, ws2_32.dll), relocations.   │
-│  └─────────────┘                                                            │
-│                                                                             │
-│  output.exe    (single standalone binary, no dependencies)                  │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A[source.py] --> B[LEXER<br>python_lexer.py]
+    B -->|Token stream| C[PARSER<br>python_parser.py]
+    C -->|AST tree| D[CODEGEN<br>python_codegen_x64.py]
+    D -->|x64 raw instructions| E[RUNTIME<br>python_runtime_x64.py]
+    E -->|.text section bytes| F[PE BUILDER<br>pe_builder.py]
+    F -->|MZ/PE Headers + Sections| G([output.exe<br>Standalone Binary])
+
+    classDef stage fill:#1e1e1e,stroke:#4a90e2,stroke-width:2px,color:#fff;
+    class B,C,D,E,F stage;
 ```
 
 ---
@@ -97,28 +61,21 @@ The compiler transforms a `.py` source file into a native `.exe` in **6 stages**
 
 All Python values at runtime are represented as a single 64-bit integer called a **LORTE_VAL**. The 3 lowest bits are a **tag** that identifies the type. The remaining 61 bits carry the payload.
 
-```
- 63                                        3   2   1   0
- ┌──────────────────────────────────────────┬───────────┐
- │              PAYLOAD (61 bits)           │  TAG (3)  │
- └──────────────────────────────────────────┴───────────┘
+```mermaid
+flowchart LR
+    LV[LORTE_VAL<br>64-bit Integer] --> P[Payload<br>61 bits]
+    LV --> T[Tag<br>3 bits]
+    
+    T -->|Tag 0| T0[None]
+    T -->|Tag 1| T1[int]
+    T -->|Tag 2| T2[bool]
+    T -->|Tag 3| T3[str pointer]
+    T -->|Tag 4| T4[list pointer]
+    T -->|Tag 5| T5[object pointer]
+    T -->|Tag 6| T6[float pointer]
+    T -->|Tag 7| T7[dict pointer]
 
-  TAG  │  Type    │  Payload
- ──────┼──────────┼──────────────────────────────────────────────────────
-   0   │  None    │  always 0
-   1   │  int     │  actual integer value  (payload << 3 | 1)
-   2   │  bool    │  0 = False, 1 = True   (payload << 3 | 2)
-   3   │  str     │  pointer to heap struct { len: u64, data: utf-8... }
-   4   │  list    │  pointer to heap struct { len, cap, items: ptr[] }
-   5   │  object  │  pointer to heap struct { class_id, nattr, attrs[] }
-   6   │  float   │  pointer to heap struct { value: f64 }
-   7   │  dict    │  pointer to heap struct { len, cap, entries[] }
-
- Examples:
-   Python 42       →  LORTE_VAL = (42 << 3) | 1  =  0x151
-   Python True     →  LORTE_VAL = (1  << 3) | 2  =  0x0A
-   Python "hello"  →  LORTE_VAL = (heap_ptr)  | 3
-   Python None     →  LORTE_VAL = 0
+    style LV fill:#2d2d2d,stroke:#e0a96d,stroke-width:2px,color:#fff
 ```
 
 This encoding means type checks are a single `AND rax, 7` instruction, and integer arithmetic only requires a shift. No boxing overhead for integers.
@@ -129,18 +86,23 @@ This encoding means type checks are a single `AND rax, 7` instruction, and integ
 
 The compiler uses the **Windows x64 ABI** (Microsoft calling convention) throughout — both for calls into the runtime and for user-defined functions.
 
-```
-  User function:  def f(a, b, c):          Compiled user method:  Class__method(self, a, b)
-                      │                                                │
-          Arguments ──┤                              Arguments ────────┤
-           a → RCX    │                               self → RCX       │
-           b → RDX    │                               a    → RDX       │
-           c → R8     │                               b    → R8        │
-        return → RAX  │                            return  → RAX       │
-
-  All LORTE_VAL values (tagged 64-bit integers).
-  Stack must be 16-byte aligned before each CALL.
-  32-byte shadow space reserved above return address.
+```mermaid
+flowchart LR
+    subgraph User Function: def f_a_b_c
+        direction LR
+        A[a] -->|RCX| X[Function Body]
+        B[b] -->|RDX| X
+        C[c] -->|R8| X
+        X -->|RAX| R[Return]
+    end
+    
+    subgraph Compiled Method: Class__method
+        direction LR
+        SA[self] -->|RCX| Y[Method Body]
+        SB[a] -->|RDX| Y
+        SC[b] -->|R8| Y
+        Y -->|RAX| SR[Return]
+    end
 ```
 
 ---
@@ -149,27 +111,19 @@ The compiler uses the **Windows x64 ABI** (Microsoft calling convention) through
 
 When a project has multiple source files, the build system **bundles** them before compilation:
 
-```
-  compilateur.json
-       │
-       ▼
-  build.py  →  bundliser_sources()
-                    │
-                    ├── binaire.py          ─┐
-                    ├── python_lexer.py      │  ast.NodeTransformer removes:
-                    ├── python_parser.py     │   • inter-module imports
-                    ├── python_codegen.py    │   • try/except import blocks
-                    ├── python_runtime.py    │   • if __name__ == "__main__"
-                    └── python_natif.py    ──┘
-                              │
-                              ▼
-                    _compiler_bundle.py   (single flat file, )
-                              │
-                              ▼
-                    compiler_python_natif()
-                              │
-                              ▼
-                    compiler.exe  ✓
+```mermaid
+flowchart TD
+    CFG[compilateur.json] --> B[build.py]
+    B -->|bundliser_sources| S{Source Files}
+    S --> F1[binaire.py]
+    S --> F2[python_lexer.py]
+    S --> F3[python_parser.py]
+    S --> F4[...]
+    
+    F1 & F2 & F3 & F4 -->|ast.NodeTransformer cleans imports| FLAT[_compiler_bundle.py]
+    FLAT -->|compiler_python_natif| EXE([compiler.exe])
+
+    style EXE fill:#3a7e40,stroke:#fff,stroke-width:2px
 ```
 
 ---
@@ -178,44 +132,17 @@ When a project has multiple source files, the build system **bundles** them befo
 
 Here is what happens at each stage for the single instruction `print("hello")`:
 
-```
-  SOURCE:   print("hello")
+```mermaid
+flowchart TD
+    S[1. Source Code] -->|print 'hello'| L[2. Lexer]
+    L -->| [NOM 'print'] [OP '('] [CHAINE 'hello'] [OP ']'] | P[3. Parser]
+    P -->|ExprInstr Appel Nom args| C[4. Codegen]
+    C -->|lea rax, hello_ptr<br/>call lorte_print| R[5. Runtime]
+    R -->|print_raw buffered| PE[6. PE Output]
+    PE -->|.data section: 'h','e','l','l','o'| EXE((Native Execution))
 
-  ── LEXER ──────────────────────────────────────────────────────────────────
-  [NOM 'print'] [OP '('] [CHAINE 'hello'] [OP ')'] [NEWLINE]
-
-  ── PARSER ─────────────────────────────────────────────────────────────────
-  ExprInstr(
-    valeur = Appel(
-      func = Nom(id='print'),
-      args = [ ChaineLit(valeur='hello') ]
-    )
-  )
-
-  ── CODEGEN ────────────────────────────────────────────────────────────────
-  ; Evaluate ChaineLit("hello") → pointer to string stored in .data section
-  lea  rax, [rip + offset_hello]      ; rax = ptr to "hello\0" in .data
-  or   rax, 3                         ; tag as LORTE_STR
-  mov  rcx, rax                       ; arg0 for lorte_print
-  call lorte_print                    ; runtime function
-
-  ── RUNTIME (lorte_print) ──────────────────────────────────────────────────
-  ; Check tag (AND rax,7 → 3 = STR)
-  ; Get ptr to utf-8 bytes and length from the LORTE_STR struct
-  mov  rcx, str_data_ptr
-  mov  rdx, str_len
-  call print_raw                      ; buffered write to stdout
-  ; Write newline '\n'
-  call print_raw
-
-  ── PRINT_RAW ──────────────────────────────────────────────────────────────
-  ; Append to 8KB internal buffer (printbuf)
-  ; When buffer is full → WriteFile(GetStdHandle(-11), printbuf, len, ...)
-  ; Flushed at program exit (print_flush) or before sys.exit()
-
-  ── PE OUTPUT (.data section) ──────────────────────────────────────────────
-  offset_hello:  db 'h','e','l','l','o'   ; raw utf-8 bytes embedded in binary
-                 dq 5                      ; length prefix in LORTE_STR struct
+    classDef step fill:#1a1a2e,stroke:#e94560,stroke-width:2px,color:#fff;
+    class S,L,P,C,R,PE step;
 ```
 
 ---
