@@ -1,3 +1,4 @@
+
 <img width="400" height="400" alt="Nouveau projet" src="https://github.com/user-attachments/assets/7f42062d-b600-4098-9509-95695eda3928" />
 
 **This project is currently under active development.**
@@ -134,12 +135,12 @@ Here is what happens at each stage for the single instruction `print("hello")`:
 
 ```mermaid
 flowchart TD
-    S[1. Source Code] -->|"print 'hello'"| L[2. Lexer]
-    L -->|"[NOM 'print'] [OP '('] [CHAINE 'hello'] [OP ')']"| P[3. Parser]
-    P -->|"ExprInstr Appel Nom args"| C[4. Codegen]
-    C -->|"lea rax, hello_ptr<br/>call lorte_print"| R[5. Runtime]
-    R -->|"print_raw buffered"| PE[6. PE Output]
-    PE -->|".data section: 'h','e','l','l','o'"| EXE((Native Execution))
+    S[1. Source Code] -->|print hello| L[2. Lexer]
+    L -->|NOM print, OP, CHAINE hello, OP| P[3. Parser]
+    P -->|ExprInstr Appel Nom args| C[4. Codegen]
+    C -->|lea rax, hello_ptr - call lorte_print| R[5. Runtime]
+    R -->|print_raw buffered| PE[6. PE Output]
+    PE -->|.data section: h e l l o| EXE((Native Execution))
 
     classDef step fill:#1a1a2e,stroke:#e94560,stroke-width:2px,color:#fff;
     class S,L,P,C,R,PE step;
